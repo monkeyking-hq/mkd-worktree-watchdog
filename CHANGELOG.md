@@ -10,6 +10,9 @@ All notable changes to `mkd-worktree-watchdog` are documented in this file.
 
 ## [0.3.0] - 2026-11-25
 
+### Documentation (2026-11-25)
+- Documented Windows default configuration path (`%APPDATA%\mkd-worktree-watchdog\config.toml`, fallback `%USERPROFILE%\.config\mkd-worktree-watchdog\config.toml`) in `README.md`.
+
 ### Added
 - Native cross-platform service deployment via `mkd-worktree-watchdog service install|uninstall|status`:
   - **Linux**: `systemd` user service + twice-daily timer (`06:00` and `18:00`, `Persistent=true`).
