@@ -7,8 +7,9 @@ mod output;
 use clap::{Parser, Subcommand};
 use mkd_worktree_watchdog::config::{default_config_path, render_default_toml, Config};
 use mkd_worktree_watchdog::error::WatchdogError;
+use mkd_worktree_watchdog::metrics::LifetimeMetrics;
 use mkd_worktree_watchdog::{prune, scan};
-use output::{print_data, print_error, print_report, OutputFormat};
+use output::{print_data, print_error, print_lifetime_metrics, print_report, OutputFormat};
 use serde::Serialize;
 use std::fs;
 use std::io::{self, Write};
@@ -29,6 +30,10 @@ struct Cli {
     /// Path to TOML configuration file (defaults to ~/.config/mkd-worktree-watchdog/config.toml).
     #[arg(short, long, global = true)]
     config: Option<PathBuf>,
+
+    /// Override path to persisted lifetime metrics JSON file.
+    #[arg(long, global = true)]
+    metrics_path: Option<PathBuf>,
 
     /// Output format (compact JSON by default).
     #[arg(short = 'F', long, value_enum, global = true, default_value_t = OutputFormat::Compact)]
@@ -77,6 +82,8 @@ enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Show persisted lifetime metrics (GB reclaimed, run count, pruned totals).
+    Metrics,
     /// Manage watchdog configuration.
     Config {
         #[command(subcommand)]
@@ -128,10 +135,13 @@ fn run(cli: Cli, format: OutputFormat) -> Result<ExitCode, WatchdogError> {
     match cli.command {
         Commands::Scan { roots } => {
             let (mut cfg, cfg_path) = Config::load_or_default(cli.config.as_deref())?;
+            if let Some(mp) = cli.metrics_path {
+                cfg.metrics_path = Some(mp);
+            }
             if !roots.is_empty() {
                 cfg.scan_roots = roots;
-                cfg.expand_paths();
             }
+            cfg.expand_paths();
             let report = scan(&cfg, cfg_path)?;
             print_report(&report, format)
                 .map_err(|source| WatchdogError::Io { path: None, source })?;
@@ -139,10 +149,13 @@ fn run(cli: Cli, format: OutputFormat) -> Result<ExitCode, WatchdogError> {
         }
         Commands::Prune { dry_run, roots } => {
             let (mut cfg, cfg_path) = Config::load_or_default(cli.config.as_deref())?;
+            if let Some(mp) = cli.metrics_path {
+                cfg.metrics_path = Some(mp);
+            }
             if !roots.is_empty() {
                 cfg.scan_roots = roots;
-                cfg.expand_paths();
             }
+            cfg.expand_paths();
             let report = prune(&cfg, cfg_path, dry_run)?;
             let has_errors = !report.errors.is_empty();
             print_report(&report, format)
@@ -157,7 +170,11 @@ fn run(cli: Cli, format: OutputFormat) -> Result<ExitCode, WatchdogError> {
             interval_hours,
             dry_run,
         } => {
-            let (cfg, cfg_path) = Config::load_or_default(cli.config.as_deref())?;
+            let (mut cfg, cfg_path) = Config::load_or_default(cli.config.as_deref())?;
+            if let Some(ref mp) = cli.metrics_path {
+                cfg.metrics_path = Some(mp.clone());
+                cfg.expand_paths();
+            }
             let hours = interval_hours.unwrap_or(cfg.schedule.interval_hours);
             if hours == 0 {
                 return Err(WatchdogError::InvalidConfig(
@@ -172,10 +189,15 @@ fn run(cli: Cli, format: OutputFormat) -> Result<ExitCode, WatchdogError> {
 
             loop {
                 // Reload config each cycle so rule changes take effect without restarting.
-                let (live_cfg, live_path) = match Config::load_or_default(cli.config.as_deref()) {
+                let (mut live_cfg, live_path) = match Config::load_or_default(cli.config.as_deref())
+                {
                     Ok(pair) => pair,
                     Err(_) => (cfg.clone(), cfg_path.clone()),
                 };
+                if let Some(ref mp) = cli.metrics_path {
+                    live_cfg.metrics_path = Some(mp.clone());
+                    live_cfg.expand_paths();
+                }
                 match prune(&live_cfg, live_path, dry_run) {
                     Ok(report) => {
                         let _ = print_report(&report, format);
@@ -197,6 +219,21 @@ fn run(cli: Cli, format: OutputFormat) -> Result<ExitCode, WatchdogError> {
                     return Ok(ExitCode::SUCCESS);
                 }
             }
+        }
+        Commands::Metrics => {
+            let (mut cfg, _) = Config::load_or_default(cli.config.as_deref())?;
+            if let Some(mp) = cli.metrics_path {
+                cfg.metrics_path = Some(mp);
+                cfg.expand_paths();
+            }
+            let metrics_path = cfg.effective_metrics_path();
+            let metrics = match metrics_path.as_deref() {
+                Some(path) => LifetimeMetrics::load_or_default(path)?,
+                None => LifetimeMetrics::default(),
+            };
+            print_lifetime_metrics(&metrics, metrics_path.as_deref(), format)
+                .map_err(|source| WatchdogError::Io { path: None, source })?;
+            Ok(ExitCode::SUCCESS)
         }
         Commands::Config { action } => match action {
             ConfigAction::Init { output, force } => {

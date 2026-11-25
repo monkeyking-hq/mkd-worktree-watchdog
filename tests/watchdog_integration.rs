@@ -39,10 +39,11 @@ fn init_repo(dir: &Path) {
     git(dir, &["commit", "-m", "initial commit"]);
 }
 
-fn base_config(scan_root: PathBuf, orphan_root: PathBuf) -> Config {
+fn base_config(scan_root: PathBuf, orphan_root: PathBuf, metrics_path: PathBuf) -> Config {
     let mut cfg = Config {
         scan_roots: vec![scan_root],
         orphan_roots: vec![orphan_root],
+        metrics_path: Some(metrics_path),
         ..Config::default()
     };
     cfg.defaults.skip_active_processes = false;
@@ -144,21 +145,24 @@ fn prunes_stale_clean_merged_worktree_and_keeps_dirty_unpushed_locked() {
 
     // Simulate 100 hours in the future so everything exceeds default 72h / 24h thresholds.
     let future = SystemTime::now() + Duration::from_secs(100 * 3600);
-    let mut cfg = base_config(workspaces, orphans);
+    let metrics_path = tmp.path().join("state/metrics.json");
+    let mut cfg = base_config(workspaces, orphans, metrics_path.clone());
     cfg.defaults.delete_merged_branches = true;
 
-    // Dry run first: nothing deleted.
+    // Dry run first: nothing deleted and metrics file NOT written.
     let dry = run_with_time(&cfg, None, true, future).unwrap();
     assert_eq!(dry.summary.repos_scanned, 1);
     assert_eq!(dry.summary.linked_worktrees_found, 5);
     assert_eq!(dry.summary.worktrees_to_prune, 1);
     assert_eq!(dry.summary.metadata_to_prune, 1);
     assert_eq!(dry.summary.orphans_to_prune, 2);
+    assert_eq!(dry.lifetime_metrics.total_runs, 0);
+    assert!(!metrics_path.exists());
     assert!(wt_stale.exists());
     assert!(orphan_empty.exists());
     assert!(orphan_broken.exists());
 
-    // Live prune.
+    // Live prune: updates lifetime metrics and writes JSONL run log.
     let live = run_with_time(&cfg, None, false, future).unwrap();
     assert_eq!(live.summary.error_count, 0);
     assert_eq!(live.summary.worktrees_pruned, 1);
@@ -166,6 +170,20 @@ fn prunes_stale_clean_merged_worktree_and_keeps_dirty_unpushed_locked() {
     assert_eq!(live.summary.orphans_pruned, 2);
     assert_eq!(live.summary.branches_deleted, 1);
     assert!(live.summary.reclaimed_bytes >= 4096);
+    assert_eq!(
+        live.run_metrics.reclaimed_bytes,
+        live.summary.reclaimed_bytes
+    );
+    assert_eq!(live.lifetime_metrics.total_runs, 1);
+    assert_eq!(
+        live.lifetime_metrics.total_reclaimed_bytes,
+        live.summary.reclaimed_bytes
+    );
+    assert!(metrics_path.is_file());
+    let run_log = metrics_path.parent().unwrap().join("runs.jsonl");
+    assert!(run_log.is_file());
+    let log_lines = fs::read_to_string(&run_log).unwrap();
+    assert_eq!(log_lines.lines().count(), 1);
 
     // Verify disk state.
     assert!(repo.exists(), "main repo must never be deleted");
@@ -211,7 +229,7 @@ fn per_path_rule_override_respects_custom_age_and_disable() {
         ],
     );
 
-    let mut cfg = base_config(workspaces, orphans);
+    let mut cfg = base_config(workspaces, orphans, tmp.path().join("state/metrics.json"));
     cfg.defaults.max_age_hours = 72;
     cfg.rules = vec![
         PathRule {

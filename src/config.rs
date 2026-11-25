@@ -31,6 +31,11 @@ pub struct Config {
     pub rules: Vec<PathRule>,
     /// Schedule settings for the built-in daemon mode.
     pub schedule: ScheduleConfig,
+    /// Optional path to persisted lifetime metrics JSON file.
+    /// Defaults to `$XDG_STATE_HOME/mkd-worktree-watchdog/metrics.json`
+    /// or `~/.local/state/mkd-worktree-watchdog/metrics.json`.
+    #[serde(default)]
+    pub metrics_path: Option<PathBuf>,
 }
 
 /// Core pruning safety and staleness policy.
@@ -158,6 +163,7 @@ impl Default for Config {
             defaults: Policy::default(),
             rules: Vec::new(),
             schedule: ScheduleConfig::default(),
+            metrics_path: None,
         }
     }
 }
@@ -202,10 +208,20 @@ impl Config {
         Ok((cfg, None))
     }
 
-    /// Expand leading `~` in `scan_roots` and `orphan_roots`.
+    /// Expand leading `~` in `scan_roots`, `orphan_roots`, and `metrics_path`.
     pub fn expand_paths(&mut self) {
         self.scan_roots = self.scan_roots.iter().map(|p| expand_tilde(p)).collect();
         self.orphan_roots = self.orphan_roots.iter().map(|p| expand_tilde(p)).collect();
+        if let Some(ref p) = self.metrics_path {
+            self.metrics_path = Some(expand_tilde(p));
+        }
+    }
+
+    /// Resolve the effective path for persisted lifetime metrics.
+    pub fn effective_metrics_path(&self) -> Option<PathBuf> {
+        self.metrics_path
+            .clone()
+            .or_else(crate::metrics::default_metrics_path)
     }
 
     /// Validate glob patterns and numeric bounds.

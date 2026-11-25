@@ -4,7 +4,7 @@
 
 [package]
 name = "mkd-worktree-watchdog"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Rule-based watchdog service and CLI that safely prunes stale git worktrees and reclaims disk space"
 license = "MIT"

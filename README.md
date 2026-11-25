@@ -45,12 +45,22 @@ mkd-worktree-watchdog --human config init
 # 2. Preview what would be pruned (read-only)
 mkd-worktree-watchdog --human scan
 
-# 3. Prune stale worktrees and reclaim disk space
+# 3. Prune stale worktrees and reclaim disk space (outputs run + lifetime GB reclaimed)
 mkd-worktree-watchdog --human prune
 
 # Or preview prune explicitly
 mkd-worktree-watchdog --human prune --dry-run
+
+# 4. Inspect lifetime metrics anytime
+mkd-worktree-watchdog --human metrics
 ```
+
+## Run & lifetime metrics
+
+- Every `scan` and `prune` output includes both **run metrics** (duration, GB/bytes reclaimed or reclaimable) and **lifetime metrics** (cumulative runs, total GB reclaimed, and total pruned counts).
+- Live `prune` runs atomically update `~/.local/state/mkd-worktree-watchdog/metrics.json` (respecting `$XDG_STATE_HOME` or `metrics_path` / `--metrics-path`) and append a structured JSONL audit entry to `runs.jsonl` in the same directory.
+- Automated `systemd` runs also log run and lifetime metrics directly to `journald` (`journalctl --user -u mkd-worktree-watchdog.service`).
+- `scan` and `--dry-run` read lifetime totals for display without modifying state.
 
 ## Running on a schedule (twice daily)
 
