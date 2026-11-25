@@ -115,6 +115,10 @@ impl LifetimeMetrics {
             path: Some(tmp_path.clone()),
             source,
         })?;
+        #[cfg(target_os = "windows")]
+        if path.exists() {
+            let _ = fs::remove_file(path);
+        }
         fs::rename(&tmp_path, path).map_err(|source| WatchdogError::Io {
             path: Some(path.to_path_buf()),
             source,
@@ -177,15 +181,33 @@ pub fn run_log_path_for(metrics_path: &Path) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("runs.jsonl"))
 }
 
-/// Default XDG state path for persisted lifetime metrics:
-/// `$XDG_STATE_HOME/mkd-worktree-watchdog/metrics.json` or `~/.local/state/mkd-worktree-watchdog/metrics.json`.
+/// Default state path for persisted lifetime metrics:
+/// - Linux/macOS: `$XDG_STATE_HOME/mkd-worktree-watchdog/metrics.json` or `~/.local/state/mkd-worktree-watchdog/metrics.json`
+/// - Windows: `%LOCALAPPDATA%\mkd-worktree-watchdog\metrics.json`
 pub fn default_metrics_path() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(local) = env::var("LOCALAPPDATA") {
+            if !local.trim().is_empty() {
+                return Some(
+                    PathBuf::from(local)
+                        .join("mkd-worktree-watchdog")
+                        .join("metrics.json"),
+                );
+            }
+        }
+    }
     if let Ok(xdg) = env::var("XDG_STATE_HOME") {
         if !xdg.trim().is_empty() {
             return Some(PathBuf::from(xdg).join("mkd-worktree-watchdog/metrics.json"));
         }
     }
-    crate::config::home_dir().map(|h| h.join(".local/state/mkd-worktree-watchdog/metrics.json"))
+    crate::config::home_dir().map(|h| {
+        h.join(".local")
+            .join("state")
+            .join("mkd-worktree-watchdog")
+            .join("metrics.json")
+    })
 }
 
 /// Convert bytes to decimal gigabytes (GB), rounded to 4 decimal places.

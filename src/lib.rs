@@ -10,6 +10,7 @@ pub mod error;
 pub mod git;
 pub mod metrics;
 pub mod rules;
+pub mod service;
 
 use crate::config::Config;
 use crate::error::WatchdogError;

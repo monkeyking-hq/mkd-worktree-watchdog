@@ -6,6 +6,7 @@
 
 use mkd_worktree_watchdog::metrics::LifetimeMetrics;
 use mkd_worktree_watchdog::rules::Action;
+use mkd_worktree_watchdog::service::ServiceStatus;
 use mkd_worktree_watchdog::WatchdogReport;
 use serde::Serialize;
 use std::io::{self, Write};
@@ -289,6 +290,36 @@ pub fn print_lifetime_metrics(
         OutputFormat::Compact | OutputFormat::Json => {
             print_data("Lifetime metrics", metrics, format)
         }
+    }
+}
+
+pub fn print_service_status(
+    message: &str,
+    status: &ServiceStatus,
+    format: OutputFormat,
+) -> io::Result<()> {
+    match format {
+        OutputFormat::Human => {
+            let mut out = io::stdout().lock();
+            writeln!(
+                out,
+                "mkd-worktree-watchdog [SERVICE: {} / {}]",
+                status.platform, status.manager
+            )?;
+            writeln!(
+                out,
+                "  installed: {} | active: {} | schedule: {}",
+                status.installed, status.active, status.schedule
+            )?;
+            for path in &status.unit_paths {
+                writeln!(out, "  unit: {}", path.display())?;
+            }
+            if let Some(detail) = &status.detail {
+                writeln!(out, "  detail: {detail}")?;
+            }
+            Ok(())
+        }
+        OutputFormat::Compact | OutputFormat::Json => print_data(message, status, format),
     }
 }
 

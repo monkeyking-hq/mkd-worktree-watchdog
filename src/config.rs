@@ -262,12 +262,12 @@ impl Config {
         &self,
         path: &Path,
     ) -> Result<(Policy, Option<&PathRule>), WatchdogError> {
-        let path_str = path.to_string_lossy();
+        let normalized = normalize_path_for_glob(path);
         for rule in &self.rules {
             let matcher = globset::Glob::new(&rule.match_path)
                 .map_err(|e| WatchdogError::InvalidConfig(e.to_string()))?
                 .compile_matcher();
-            if matcher.is_match(path_str.as_ref()) {
+            if matcher.is_match(normalized.as_str()) {
                 let mut policy = self.defaults.clone();
                 if let Some(v) = rule.max_age_hours {
                     policy.max_age_hours = v;
@@ -294,28 +294,59 @@ impl Config {
     }
 }
 
-/// Resolve the XDG/default config file path: `~/.config/mkd-worktree-watchdog/config.toml`.
+/// Normalize path separators to forward slashes so glob rules work identically on Windows and Unix.
+pub fn normalize_path_for_glob(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+/// Resolve the default config file path:
+/// - Linux/macOS: `$XDG_CONFIG_HOME/mkd-worktree-watchdog/config.toml` or `~/.config/mkd-worktree-watchdog/config.toml`
+/// - Windows: `%APPDATA%\mkd-worktree-watchdog\config.toml` (fallback `%USERPROFILE%\.config\mkd-worktree-watchdog\config.toml`)
 pub fn default_config_path() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(appdata) = env::var("APPDATA") {
+            if !appdata.trim().is_empty() {
+                return Some(
+                    PathBuf::from(appdata)
+                        .join("mkd-worktree-watchdog")
+                        .join("config.toml"),
+                );
+            }
+        }
+    }
     if let Ok(xdg) = env::var("XDG_CONFIG_HOME") {
         if !xdg.trim().is_empty() {
             return Some(PathBuf::from(xdg).join("mkd-worktree-watchdog/config.toml"));
         }
     }
-    home_dir().map(|h| h.join(".config/mkd-worktree-watchdog/config.toml"))
+    home_dir().map(|h| {
+        h.join(".config")
+            .join("mkd-worktree-watchdog")
+            .join("config.toml")
+    })
 }
 
-/// Resolve the user's home directory from `HOME`.
+/// Resolve the user's home directory (`HOME` on Unix; `USERPROFILE` with `HOME` fallback on Windows).
 pub fn home_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(profile) = env::var_os("USERPROFILE") {
+            if !profile.is_empty() {
+                return Some(PathBuf::from(profile));
+            }
+        }
+    }
     env::var_os("HOME").map(PathBuf::from)
 }
 
-/// Expand a leading `~` or `~/` to the user's home directory.
+/// Expand a leading `~`, `~/`, or `~\` to the user's home directory.
 pub fn expand_tilde(path: &Path) -> PathBuf {
     let raw = path.to_string_lossy();
     if raw == "~" {
         return home_dir().unwrap_or_else(|| path.to_path_buf());
     }
-    if let Some(rest) = raw.strip_prefix("~/") {
+    if let Some(rest) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\")) {
         if let Some(home) = home_dir() {
             return home.join(rest);
         }
