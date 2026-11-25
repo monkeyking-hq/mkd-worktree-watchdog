@@ -94,7 +94,12 @@ What `service install` configures on each OS:
 
 ## Configuration
 
-Configuration lives at `~/.config/mkd-worktree-watchdog/config.toml` (or pass `--config <path>`). Run `mkd-worktree-watchdog config init` to generate the full commented template, or `mkd-worktree-watchdog --human config show` to inspect the active resolved config.
+Default configuration file locations (or pass `--config <path>`):
+
+- **Linux / macOS**: `$XDG_CONFIG_HOME/mkd-worktree-watchdog/config.toml` (default: `~/.config/mkd-worktree-watchdog/config.toml`)
+- **Windows**: `%APPDATA%\mkd-worktree-watchdog\config.toml` (fallback: `%USERPROFILE%\.config\mkd-worktree-watchdog\config.toml`)
+
+Run `mkd-worktree-watchdog config init` to generate the full commented template, or `mkd-worktree-watchdog --human config show` to inspect the active resolved config.
 
 ### Per-path rule overrides
 
