@@ -8,9 +8,14 @@ use clap::{Parser, Subcommand};
 use mkd_worktree_watchdog::config::{default_config_path, render_default_toml, Config};
 use mkd_worktree_watchdog::error::WatchdogError;
 use mkd_worktree_watchdog::metrics::LifetimeMetrics;
+use mkd_worktree_watchdog::service::{install_service, service_status, uninstall_service};
 use mkd_worktree_watchdog::{prune, scan};
-use output::{print_data, print_error, print_lifetime_metrics, print_report, OutputFormat};
+use output::{
+    print_data, print_error, print_lifetime_metrics, print_report, print_service_status,
+    OutputFormat,
+};
 use serde::Serialize;
+use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -84,11 +89,26 @@ enum Commands {
     },
     /// Show persisted lifetime metrics (GB reclaimed, run count, pruned totals).
     Metrics,
+    /// Install, uninstall, or inspect the native OS scheduled service (systemd / launchd / Windows Task Scheduler).
+    Service {
+        #[command(subcommand)]
+        action: ServiceAction,
+    },
     /// Manage watchdog configuration.
     Config {
         #[command(subcommand)]
         action: ConfigAction,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum ServiceAction {
+    /// Install and enable the twice-daily scheduled service for this OS.
+    Install,
+    /// Disable and remove the scheduled service for this OS.
+    Uninstall,
+    /// Show scheduled service status for this OS.
+    Status,
 }
 
 #[derive(Subcommand, Debug)]
@@ -183,9 +203,10 @@ fn run(cli: Cli, format: OutputFormat) -> Result<ExitCode, WatchdogError> {
             }
             let interval = Duration::from_secs(hours * 3600);
             let shutdown = Arc::new(AtomicBool::new(false));
-            let _ = signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&shutdown));
-            let _ =
-                signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&shutdown));
+            let shutdown_flag = Arc::clone(&shutdown);
+            let _ = ctrlc::set_handler(move || {
+                shutdown_flag.store(true, Ordering::Relaxed);
+            });
 
             loop {
                 // Reload config each cycle so rule changes take effect without restarting.
@@ -235,6 +256,28 @@ fn run(cli: Cli, format: OutputFormat) -> Result<ExitCode, WatchdogError> {
                 .map_err(|source| WatchdogError::Io { path: None, source })?;
             Ok(ExitCode::SUCCESS)
         }
+        Commands::Service { action } => match action {
+            ServiceAction::Install => {
+                let exe = env::current_exe()
+                    .map_err(|source| WatchdogError::Io { path: None, source })?;
+                let status = install_service(&exe, cli.config.as_deref())?;
+                print_service_status("Service installed", &status, format)
+                    .map_err(|source| WatchdogError::Io { path: None, source })?;
+                Ok(ExitCode::SUCCESS)
+            }
+            ServiceAction::Uninstall => {
+                let status = uninstall_service()?;
+                print_service_status("Service uninstalled", &status, format)
+                    .map_err(|source| WatchdogError::Io { path: None, source })?;
+                Ok(ExitCode::SUCCESS)
+            }
+            ServiceAction::Status => {
+                let status = service_status()?;
+                print_service_status("Service status", &status, format)
+                    .map_err(|source| WatchdogError::Io { path: None, source })?;
+                Ok(ExitCode::SUCCESS)
+            }
+        },
         Commands::Config { action } => match action {
             ConfigAction::Init { output, force } => {
                 let target = output.or_else(default_config_path).ok_or_else(|| {

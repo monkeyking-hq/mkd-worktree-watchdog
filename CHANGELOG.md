@@ -8,6 +8,16 @@ SPDX-License-Identifier: MIT
 
 All notable changes to `mkd-worktree-watchdog` are documented in this file.
 
+## [0.3.0] - 2026-11-25
+
+### Added
+- Native cross-platform service deployment via `mkd-worktree-watchdog service install|uninstall|status`:
+  - **Linux**: `systemd` user service + twice-daily timer (`06:00` and `18:00`, `Persistent=true`).
+  - **macOS (OS X)**: `launchd` LaunchAgent plist (`StartCalendarInterval` at `06:00` and `18:00`, logs to `~/Library/Logs/mkd-worktree-watchdog.log`).
+  - **Windows**: Task Scheduler task `MKDWorktreeWatchdog` (twice daily at `06:00` and `18:00`, `StartWhenAvailable=true`, runs hidden).
+- Standalone deployment scripts under `contrib/launchd/` (`install.sh`, `uninstall.sh`) and `contrib/windows/` (`install-task.ps1`, `uninstall-task.ps1`).
+- Full Windows & macOS runtime compatibility: `%APPDATA%` / `%LOCALAPPDATA%` / `%USERPROFILE%` path resolution, cross-platform `~/` and `~\` tilde expansion, normalized glob matching for Windows backslashes, Windows-safe atomic metrics file replacement, and cross-platform signal handling via `ctrlc`.
+
 ## [0.2.0] - 2026-11-25
 
 ### Added

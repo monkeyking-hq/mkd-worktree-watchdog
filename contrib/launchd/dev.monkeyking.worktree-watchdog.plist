@@ -14,10 +14,29 @@ SPDX-License-Identifier: MIT
     <string>--human</string>
     <string>prune</string>
   </array>
-  <!-- Twice daily (every 12 hours) -->
-  <key>StartInterval</key>
-  <integer>43200</integer>
-  <key>RunAtLoad</key>
+  <!-- Twice daily at 06:00 and 18:00 -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict>
+      <key>Hour</key>
+      <integer>6</integer>
+      <key>Minute</key>
+      <integer>0</integer>
+    </dict>
+    <dict>
+      <key>Hour</key>
+      <integer>18</integer>
+      <key>Minute</key>
+      <integer>0</integer>
+    </dict>
+  </array>
+  <key>StandardOutPath</key>
+  <string>/tmp/mkd-worktree-watchdog.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/mkd-worktree-watchdog.log</string>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>LowPriorityIO</key>
   <true/>
 </dict>
 </plist>

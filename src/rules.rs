@@ -43,7 +43,10 @@ pub fn evaluate_worktree(
         return Ok(keep("main repository worktree", None));
     }
 
-    if matches_any_glob(&wt.entry.path.to_string_lossy(), &config.exclude_paths)? {
+    if matches_any_glob(
+        &crate::config::normalize_path_for_glob(&wt.entry.path),
+        &config.exclude_paths,
+    )? {
         return Ok(keep("matched exclude_paths", None));
     }
 
@@ -142,7 +145,10 @@ pub fn evaluate_orphan(
         return Ok(keep("prune_orphans is disabled", None));
     }
 
-    if matches_any_glob(&orphan.path.to_string_lossy(), &config.exclude_paths)? {
+    if matches_any_glob(
+        &crate::config::normalize_path_for_glob(&orphan.path),
+        &config.exclude_paths,
+    )? {
         return Ok(keep("matched exclude_paths", None));
     }
 

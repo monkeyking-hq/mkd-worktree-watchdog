@@ -64,28 +64,33 @@ mkd-worktree-watchdog --human metrics
 
 ## Running on a schedule (twice daily)
 
-### Option A: systemd user timer (Linux, recommended)
+### Quickest: built-in cross-platform service command (Linux, macOS, Windows)
 
 ```bash
-mkdir -p ~/.config/systemd/user
-cp contrib/systemd/mkd-worktree-watchdog.service ~/.config/systemd/user/
-cp contrib/systemd/mkd-worktree-watchdog.timer ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now mkd-worktree-watchdog.timer
-systemctl --user list-timers mkd-worktree-watchdog.timer
+# Install and enable the native twice-daily service (06:00 & 18:00)
+mkd-worktree-watchdog --human service install
+
+# Check service status
+mkd-worktree-watchdog --human service status
+
+# Uninstall
+mkd-worktree-watchdog --human service uninstall
 ```
 
-The default timer runs twice daily at **06:00** and **18:00** (`RandomizedDelaySec=15m`, `Persistent=true`).
+What `service install` configures on each OS:
 
-### Option B: Built-in daemon mode (any OS / container)
+| Platform | Service Manager | Schedule | Logs / State |
+| --- | --- | --- | --- |
+| **Linux** | `systemd` user timer (`mkd-worktree-watchdog.timer`) | `06:00` & `18:00` (`Persistent=true`) | `journalctl --user -u mkd-worktree-watchdog.service` + `~/.local/state/mkd-worktree-watchdog/` |
+| **macOS (OS X)** | `launchd` LaunchAgent (`dev.monkeyking.worktree-watchdog`) | `06:00` & `18:00` (`StartCalendarInterval`) | `~/Library/Logs/mkd-worktree-watchdog.log` + `~/.local/state/mkd-worktree-watchdog/` |
+| **Windows** | Task Scheduler (`MKDWorktreeWatchdog`) | `06:00` & `18:00` (`StartWhenAvailable=true`, hidden) | `%LOCALAPPDATA%\mkd-worktree-watchdog\` (`metrics.json` + `runs.jsonl`) |
 
-```bash
-mkd-worktree-watchdog daemon --interval-hours 12
-```
+### Manual / script-based deployment
 
-### Option C: macOS launchd
-
-Copy `contrib/launchd/dev.monkeyking.worktree-watchdog.plist` to `~/Library/LaunchAgents/`, adjust the binary path if needed, and load it with `launchctl load`.
+- **Linux (`systemd`)**: unit templates in `contrib/systemd/`
+- **macOS (`launchd`)**: plist + helper scripts in `contrib/launchd/` (`install.sh` / `uninstall.sh`)
+- **Windows (Task Scheduler)**: PowerShell scripts in `contrib/windows/` (`install-task.ps1` / `uninstall-task.ps1`)
+- **Any OS / container (built-in daemon)**: `mkd-worktree-watchdog daemon --interval-hours 12`
 
 ## Configuration
 
