@@ -8,6 +8,7 @@
 pub mod config;
 pub mod error;
 pub mod git;
+pub mod metrics;
 pub mod rules;
 
 use crate::config::Config;
@@ -16,12 +17,13 @@ use crate::git::{
     discover_orphans, discover_repos, find_active_process_cwds, inspect_worktree, list_worktrees,
     run_git, OrphanInspection, WorktreeInspection,
 };
+use crate::metrics::{append_run_log, bytes_to_gb, unix_timestamp, LifetimeMetrics, RunMetrics};
 use crate::rules::{evaluate_orphan, evaluate_worktree, is_under_root, Action, Decision};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
-use std::time::SystemTime;
+use std::time::{Instant, SystemTime};
 
 /// Evaluated linked worktree paired with its rule decision.
 #[derive(Debug, Clone, Serialize)]
@@ -84,7 +86,11 @@ pub struct WatchdogReport {
     pub dry_run: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config_path: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metrics_path: Option<PathBuf>,
     pub summary: RunSummary,
+    pub run_metrics: RunMetrics,
+    pub lifetime_metrics: LifetimeMetrics,
     pub worktrees: Vec<EvaluatedWorktree>,
     pub orphans: Vec<EvaluatedOrphan>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -117,6 +123,7 @@ pub fn run_with_time(
     dry_run: bool,
     now: SystemTime,
 ) -> Result<WatchdogReport, WatchdogError> {
+    let started = Instant::now();
     config.validate()?;
 
     let active_cwds = if config.defaults.skip_active_processes {
@@ -312,10 +319,59 @@ pub fn run_with_time(
 
     summary.error_count = errors.len();
 
+    let timestamp_unix = unix_timestamp(now);
+    let run_metrics = RunMetrics {
+        timestamp_unix,
+        duration_ms: started.elapsed().as_millis() as u64,
+        reclaimed_bytes: summary.reclaimed_bytes,
+        reclaimed_gb: bytes_to_gb(summary.reclaimed_bytes),
+        reclaimable_bytes: summary.reclaimable_bytes,
+        reclaimable_gb: bytes_to_gb(summary.reclaimable_bytes),
+    };
+
+    let metrics_path = config.effective_metrics_path();
+    let mut lifetime_metrics = match metrics_path.as_deref() {
+        Some(path) => match LifetimeMetrics::load_or_default(path) {
+            Ok(m) => m,
+            Err(err) => {
+                errors.push(ItemError {
+                    path: path.to_path_buf(),
+                    message: err.to_string(),
+                });
+                summary.error_count = errors.len();
+                LifetimeMetrics::default()
+            }
+        },
+        None => LifetimeMetrics::default(),
+    };
+
+    if !dry_run {
+        lifetime_metrics.record_run(&summary, timestamp_unix);
+        if let Some(path) = metrics_path.as_deref() {
+            if let Err(err) = lifetime_metrics.save(path) {
+                errors.push(ItemError {
+                    path: path.to_path_buf(),
+                    message: err.to_string(),
+                });
+                summary.error_count = errors.len();
+            } else if let Err(err) = append_run_log(path, &summary, &run_metrics, &lifetime_metrics)
+            {
+                errors.push(ItemError {
+                    path: path.to_path_buf(),
+                    message: err.to_string(),
+                });
+                summary.error_count = errors.len();
+            }
+        }
+    }
+
     Ok(WatchdogReport {
         dry_run,
         config_path,
+        metrics_path,
         summary,
+        run_metrics,
+        lifetime_metrics,
         worktrees: evaluated_worktrees,
         orphans: evaluated_orphans,
         errors,

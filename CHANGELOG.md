@@ -8,6 +8,14 @@ SPDX-License-Identifier: MIT
 
 All notable changes to `mkd-worktree-watchdog` are documented in this file.
 
+## [0.2.0] - 2026-11-25
+
+### Added
+- Per-run metrics (`run_metrics`: duration, bytes and GB reclaimed/reclaimable) and persisted lifetime metrics (`lifetime_metrics`: cumulative runs, GB/bytes reclaimed, and pruned totals).
+- Automatic atomic persistence to `$XDG_STATE_HOME/mkd-worktree-watchdog/metrics.json` (default `~/.local/state/mkd-worktree-watchdog/metrics.json`, overridable via `metrics_path` in config or `--metrics-path`) on live prune runs; dry-runs and `scan` remain read-only.
+- Append-only JSONL run log (`runs.jsonl` alongside `metrics.json`) recording every live/automated run's metrics alongside `journald` output.
+- New `metrics` CLI subcommand to inspect lifetime GB reclaimed in JSON or `--human` format.
+
 ## [0.1.0] - 2026-11-25
 
 ### Added

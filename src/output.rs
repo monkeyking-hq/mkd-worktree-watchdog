@@ -4,10 +4,12 @@
 
 //! Compact JSON envelopes and human-readable CLI output.
 
+use mkd_worktree_watchdog::metrics::LifetimeMetrics;
 use mkd_worktree_watchdog::rules::Action;
 use mkd_worktree_watchdog::WatchdogReport;
 use serde::Serialize;
 use std::io::{self, Write};
+use std::path::Path;
 
 /// Output format for command results (default: compact single-line JSON envelope).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
@@ -128,25 +130,54 @@ fn print_report_human(report: &WatchdogReport) -> io::Result<()> {
     if report.dry_run {
         writeln!(
             out,
-            "  candidates: {} worktree(s), {} metadata entry(ies), {} orphan(s) | kept: {} | reclaimable: {}",
+            "  candidates: {} worktree(s), {} metadata entry(ies), {} orphan(s) | kept: {} | reclaimable: {:.4} GB ({})",
             s.worktrees_to_prune,
             s.metadata_to_prune,
             s.orphans_to_prune,
             s.kept,
+            report.run_metrics.reclaimable_gb,
             format_bytes(s.reclaimable_bytes)
         )?;
     } else {
         writeln!(
             out,
-            "  pruned: {} worktree(s), {} repo metadata, {} orphan(s), {} branch(es) | kept: {} | reclaimed: {}",
+            "  pruned: {} worktree(s), {} repo metadata, {} orphan(s), {} branch(es) | kept: {} | reclaimed: {:.4} GB ({})",
             s.worktrees_pruned,
             s.metadata_repos_pruned,
             s.orphans_pruned,
             s.branches_deleted,
             s.kept,
+            report.run_metrics.reclaimed_gb,
             format_bytes(s.reclaimed_bytes)
         )?;
     }
+    writeln!(
+        out,
+        "  run metrics: duration {} ms | {} {:.4} GB",
+        report.run_metrics.duration_ms,
+        if report.dry_run {
+            "reclaimable"
+        } else {
+            "reclaimed"
+        },
+        if report.dry_run {
+            report.run_metrics.reclaimable_gb
+        } else {
+            report.run_metrics.reclaimed_gb
+        }
+    )?;
+    let lt = &report.lifetime_metrics;
+    writeln!(
+        out,
+        "  lifetime metrics: runs {} | total reclaimed {:.4} GB ({}) | worktrees {} | metadata repos {} | orphans {} | branches {}",
+        lt.total_runs,
+        lt.total_reclaimed_gb,
+        format_bytes(lt.total_reclaimed_bytes),
+        lt.total_worktrees_pruned,
+        lt.total_metadata_repos_pruned,
+        lt.total_orphans_pruned,
+        lt.total_branches_deleted
+    )?;
 
     if !report.worktrees.is_empty() {
         writeln!(out, "\nLinked worktrees:")?;
@@ -215,6 +246,50 @@ fn print_report_human(report: &WatchdogReport) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+pub fn print_lifetime_metrics(
+    metrics: &LifetimeMetrics,
+    path: Option<&Path>,
+    format: OutputFormat,
+) -> io::Result<()> {
+    match format {
+        OutputFormat::Human => {
+            let mut out = io::stdout().lock();
+            writeln!(out, "mkd-worktree-watchdog [LIFETIME METRICS]")?;
+            if let Some(p) = path {
+                writeln!(out, "  metrics file: {}", p.display())?;
+            }
+            writeln!(
+                out,
+                "  total reclaimed: {:.4} GB ({})",
+                metrics.total_reclaimed_gb,
+                format_bytes(metrics.total_reclaimed_bytes)
+            )?;
+            writeln!(
+                out,
+                "  total runs: {} | worktrees: {} | metadata repos: {} | orphans: {} | branches: {}",
+                metrics.total_runs,
+                metrics.total_worktrees_pruned,
+                metrics.total_metadata_repos_pruned,
+                metrics.total_orphans_pruned,
+                metrics.total_branches_deleted
+            )?;
+            if let Some(ts) = metrics.last_run_unix {
+                writeln!(
+                    out,
+                    "  last run (unix): {} | last run reclaimed: {:.4} GB ({})",
+                    ts,
+                    metrics.last_run_reclaimed_gb,
+                    format_bytes(metrics.last_run_reclaimed_bytes)
+                )?;
+            }
+            Ok(())
+        }
+        OutputFormat::Compact | OutputFormat::Json => {
+            print_data("Lifetime metrics", metrics, format)
+        }
+    }
 }
 
 pub fn format_bytes(bytes: u64) -> String {
