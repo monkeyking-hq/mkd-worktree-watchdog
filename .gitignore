@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 Nathan A Chadwick
+#
+# SPDX-License-Identifier: MIT
+
+target/
+**/*.rs.bk
+**/*.pdb
+dist/
+build/
+*.log
+*.tmp
+*.bak
+.DS_Store
+.env
+.envrc
+.env.local
+.agents/
+.gemini/
+.antigravitycli/
+.kilo/
+.worktrees/
+/AGENTS.local.md

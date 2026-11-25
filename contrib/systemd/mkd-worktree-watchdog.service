@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Nathan A Chadwick
+# SPDX-License-Identifier: MIT
+
+[Unit]
+Description=Prune stale git worktrees and reclaim disk space (mkd-worktree-watchdog)
+
+[Service]
+Type=oneshot
+ExecStart=%h/.cargo/bin/mkd-worktree-watchdog --human prune
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

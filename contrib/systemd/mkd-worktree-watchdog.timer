@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Nathan A Chadwick
+# SPDX-License-Identifier: MIT
+
+[Unit]
+Description=Run mkd-worktree-watchdog twice daily to prune stale git worktrees
+
+[Timer]
+OnCalendar=*-*-* 06:00,18:00:00
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
