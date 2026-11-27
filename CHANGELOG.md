@@ -8,6 +8,11 @@ SPDX-License-Identifier: MIT
 
 All notable changes to `mkd-worktree-watchdog` are documented in this file.
 
+## 2026-11-26 — Wire Tier 2 HashSeal Instruction Integrity Gate
+
+### Added
+- 2026-11-26 — `.hashseal.json`, `.gitea/workflows/hashseal.yml`, and digest seal on `AGENTS.md`. Docs/CI-only; no version bump.
+
 ## [0.3.0] - 2026-11-25
 
 ### Documentation (2026-11-25)
